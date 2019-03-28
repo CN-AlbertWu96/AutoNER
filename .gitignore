@@ -1,7 +1,7 @@
 .DS_Store
 bin
-models
 
+# AutoPhrase
 AutoPhrase
 
 # Prerequisites
@@ -36,3 +36,15 @@ AutoPhrase
 *.exe
 *.out
 *.app
+
+# Dataset
+data
+
+# Models
+models
+
+# pythoncache
+*.pyc
+
+# embedding file
+embedding

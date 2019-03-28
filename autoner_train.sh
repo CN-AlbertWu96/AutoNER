@@ -1,17 +1,22 @@
-MODEL_NAME="BC5CDR"
-RAW_TEXT="data/BC5CDR/raw_text.txt"
-DICT_CORE="data/BC5CDR/dict_core.txt"
-DICT_FULL="data/BC5CDR/dict_full.txt"
-EMBEDDING_TXT_FILE="embedding/bio_embedding.txt"
+MODEL_NAME="CoNLL03_new"
+RAW_TEXT="data/CoNLL03/train.txt"
+DICT_CORE="data/CoNLL03/dict_core_new.txt"
+DICT_FULL="data/CoNLL03/dict_full_new.txt"
+EMBEDDING_TXT_FILE="embedding/glove.6B.200d.txt"
 MUST_RE_RUN=0
+
+REQUIRE_ANNOTATION=1
+UNIFORM_SAMPLING=0
 
 green=`tput setaf 2`
 reset=`tput sgr0`
 
-DEV_SET="data/BC5CDR/truth_dev.ck"
-TEST_SET="data/BC5CDR/truth_test.ck"
+DEV_SET="data/CoNLL03/truth_dev.ck"
+TEST_SET="data/CoNLL03/truth_test.ck"
 
 MODEL_ROOT=./models/$MODEL_NAME
+GOLDEN_SET="data/CoNLL03/golden.ck"
+
 TRAINING_SET=$MODEL_ROOT/annotations.ck
 
 mkdir -p $MODEL_ROOT
@@ -31,8 +36,16 @@ if [ $MUST_RE_RUN == 1 ] || [ ! -e $MODEL_ROOT/embedding.pk ]; then
     python preprocess_partial_ner/save_emb.py --input_embedding $EMBEDDING_TXT_FILE --output_embedding $MODEL_ROOT/embedding.pk
 fi
 
-echo ${green}=== Generating Distant Supervision ===${reset}
-bin/generate $RAW_TEXT $DICT_CORE $DICT_FULL $TRAINING_SET
+if [ ! -e $MODEL_ROOT/annotations.pk ]; then
+    if $REQUIRE_ANNOTATION == 0; then
+        cp $GOLDEN_SET $MODEL_ROOT/annotations.ck
+    fi
+
+    if $REQUIRE_ANNOTATION == 1; then
+        echo ${green}=== Generating Distant Supervision ===${reset}
+        bin/generate $RAW_TEXT $DICT_CORE $DICT_FULL $TRAINING_SET
+    fi
+fi
 
 if [ DEV_SET == "" ]; then
     DEV_SET=$TRAINING_SET

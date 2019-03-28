@@ -1,6 +1,6 @@
-MODEL_NAME="BC5CDR"
+MODEL_NAME="CoNLL03_selected"
 GPU_ID=0
-RAW_TEXT="data/BC5CDR/raw_text.txt"
+RAW_TEXT="data/CoNLL03/train.txt"
 
 green=`tput setaf 2`
 reset=`tput sgr0`

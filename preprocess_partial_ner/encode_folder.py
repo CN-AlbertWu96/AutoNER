@@ -4,10 +4,11 @@ import os
 import random
 import numpy as np
 from tqdm import tqdm
-
+import sys
 import itertools
 import functools
 
+# narrow down the word mapping, require the word to be in the vocabulary or signal word
 def filter_words(w_map, emb_array, ck_filenames):
     vocab = set()
     for filename in ck_filenames:
@@ -19,15 +20,16 @@ def filter_words(w_map, emb_array, ck_filenames):
                 vocab.add(word)
     new_w_map = {}
     new_emb_array = []
+    # obtain the embedding of words appear in both wmap and vocab
     for (word, idx) in w_map.items():
         if word in vocab or word in ['<unk>', '<s>', '< >', '<\n>']:
-            assert word not in new_w_map
+            assert word not in new_w_map, "%s appears twice in ebd file"%word
             new_w_map[word] = len(new_emb_array)
             new_emb_array.append(emb_array[idx])
     print('filtered %d --> %d' % (len(emb_array), len(new_emb_array)))
     return new_w_map, new_emb_array
 
-
+# return all possible entity types
 def build_label_mapping(train_file, dev_file, test_file):
     ret = {'None': 0} # None must be 0
     for filename in [train_file, dev_file, test_file]:
@@ -79,11 +81,13 @@ def read_noisy_corpus(lines):
             if safe:
                 tmp_lcl.append(chunk_boundary)
                 if 'I' == chunk_boundary:
+                    # more than one type for one word
                     type_list = entity_types.split(',')
                     tmp_lpl.append(1)
                     tmp_ltl.append(type_list)
                 else:
                     tmp_lpl.append(0)
+        # if one sentence ends
         elif len(tmp_fl) > 0:
             features.append(tmp_fl)
             labels_chunk.append(tmp_lcl)
@@ -91,7 +95,7 @@ def read_noisy_corpus(lines):
             labels_point.append(tmp_lpl)
             labels_typing.append(tmp_ltl)
             tmp_fl, tmp_lpl, tmp_lcml, tmp_lcl, tmp_ltl = list(), list(), list(), list(), list()
-
+    # last sentence
     if len(tmp_fl) > 0:
         features.append(tmp_fl)
         labels_chunk.append(tmp_lcl)
@@ -158,19 +162,21 @@ def encode_folder(input_folder, output_folder, w_map, c_map, cl_map, tl_map, c_t
     with open(input_folder, 'r') as fin:
         lines = fin.readlines()
 
+    # denoise each sentences
     features, labels_chunk, labels_chunk_mask, labels_point, labels_typing = read_noisy_corpus(lines)
 
     if c_threshold > 0:
         c_count = dict()
         for line in features:
             for tup in line:
+                # why count char level?
                 for t_char in tup:
                     c_count[t_char] = c_count.get(t_char, 0) + 1
         c_set = [k for k, v in c_count.items() if v > c_threshold]
         for key in c_set:
+            # key can never be in c_map
             if key not in c_map:
                 c_map[key] = len(c_map)
-
     dataset = list()
 
     for f_l, l_c, l_c_m, l_m, l_t in zip(features, labels_chunk, labels_chunk_mask, labels_point, labels_typing):
@@ -178,25 +184,38 @@ def encode_folder(input_folder, output_folder, w_map, c_map, cl_map, tl_map, c_t
         tmp_c = [c_st, c_con]
         tmp_mc = [0, 1]
 
+        # why ignore 0 and -1? s and eof?
         for i_f, i_m in zip(f_l[1:-1], l_c_m[1:-1]):
+            # character level embedding, the embedding of the character is the word contains the character
+            # if the word doesn't exist in the dictionary, regard it as <unk>
             tmp_w = tmp_w + [w_map.get(i_f, w_map.get(i_f.lower(), w_unk))] * len(i_f) + [w_con]
+            # character level index combination
             tmp_c = tmp_c + [c_map.get(t, c_unk) for t in i_f] + [c_con]
+            # safe or not, almost 1, when 4 colums in one row, safe=0
+            # tmp_mc is to record the character level space
+            # ex. '<s> ab cd </n>' => [0,1,0,0,1,0,0,1,0]
             tmp_mc = tmp_mc + [0] * len(i_f) + [i_m]
 
+        # record </n>
         tmp_w.append(w_pad)
         tmp_c.append(c_pad)
         tmp_mc.append(0)
 
-
+        # record the I/O
         tmp_lc = [cl_map[tup] for tup in l_c[1:]]
+        # record the I/O? 
         tmp_mt = l_m[1:]
+        # record entity types for each word in one sentence
         tmp_lt = list()
         for tup_list in l_t:
+            # one hot encoding of entity type
             tmp_mask = [0] * len(tl_map)
             for tup in tup_list:
                 tmp_mask[tl_map[tup]] = 1
             tmp_lt.append(tmp_mask)
 
+        # character embedding, character index, character space
+        # word chunker bound, ?, word entity type
         dataset.append([tmp_w, tmp_c, tmp_mc, tmp_lc, tmp_mt, tmp_lt])
 
     dataset.sort(key=lambda t: len(t[0]), reverse=True)
@@ -216,6 +235,7 @@ def encode_dataset(input_file, w_map, c_map, cl_map, tl_map):
     with open(input_file, 'r') as f:
         lines = f.readlines()
 
+    # no need to deal with safe/dangerous
     features, labels_chunk, labels_point, labels_typing = read_corpus(lines)
 
     w_st, w_unk, w_con, w_pad = w_map['<s>'], w_map['<unk>'], w_map['< >'], w_map['<\n>']
@@ -229,12 +249,13 @@ def encode_dataset(input_file, w_map, c_map, cl_map, tl_map):
         tmp_mc = [0, 1]
         tmp_lc = [cl_map[l_c[1]]]
 
+        # why start from 2?
         for i_f, i_c in zip(f_l[1:-1], l_c[2:]):
             tmp_w = tmp_w + [w_map.get(i_f, w_map.get(i_f.lower(), w_unk))] * len(i_f) + [w_con]
             tmp_c = tmp_c + [c_map.get(t, c_unk) for t in i_f] + [c_con]
             tmp_mc = tmp_mc + [0] * len(i_f) + [1]
             tmp_lc = tmp_lc + [cl_map[i_c]]
-
+    
         tmp_w.append(w_pad)
         tmp_c.append(c_pad)
         tmp_mc.append(0)
@@ -275,10 +296,13 @@ if __name__ == "__main__":
     tl_map = build_label_mapping(args.input_train, args.input_testa, args.input_testb)
     cl_map = {'I': 0, 'O': 1}
 
+    # record character embedding, character index, character space
+    # word chunker bound, ?, word entity type for all three files
     range_ind = encode_folder(args.input_train, args.output_folder, w_map, c_map, cl_map, tl_map, 5)
     testa_dataset = encode_dataset(args.input_testa, w_map, c_map, cl_map, tl_map)
     testb_dataset = encode_dataset(args.input_testb, w_map, c_map, cl_map, tl_map)
 
+    # what is range_ind for
     with open(args.output_folder+'test.pk', 'wb') as f:
         pickle.dump({'emb_array': emb_array, 'w_map': w_map, 'c_map': c_map, 'tl_map': tl_map, 'cl_map': cl_map, 'range': range_ind, 'test_data':testb_dataset, 'dev_data': testa_dataset}, f)
 
