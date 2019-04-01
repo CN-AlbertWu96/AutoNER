@@ -13,6 +13,7 @@ import sys
 import pickle
 from tqdm import tqdm
 import random
+import numpy as np
 
 from torch.utils.data import Dataset
 
@@ -258,6 +259,8 @@ class TrainDataset(object):
             batch = self.dataset[self.index_list[batch_idx]: self.index_list[batch_idx + 1]]
 
             cur_seq_length = len(batch[0][0])
+            # for tup in batch:
+            #     print(cur_seq_length - len(tup[0]), end=" ")
             word_t = torch.LongTensor([tup[0] + [self.w_pad] * (cur_seq_length - len(tup[0])) for tup in batch]).to(device)
             char_t = torch.LongTensor([tup[1] + [self.c_pad] * (cur_seq_length - len(tup[0])) for tup in batch]).to(device)
             chunk_mask = torch.ByteTensor([tup[2] + [0] * (cur_seq_length - len(tup[2])) for tup in batch]).to(device)
@@ -281,6 +284,7 @@ class TrainDataset(object):
         self.dataset = list(filter(lambda t: random.uniform(0, 1) <= self.sample_ratio, self.dataset))
 
         dataset_size = len(self.dataset)
+        print("dataset_size", dataset_size)
         self.index_list = list()
         start_index = 0
         while start_index < dataset_size:
@@ -294,6 +298,146 @@ class TrainDataset(object):
         self.shuffle_list = list(range(self.index_length-1, -1, -1))
 
         self.total_batch_num = self.index_length
+
+class ActiveTrainDataset(object):
+    def __init__(self, 
+            dataset_name: str, 
+            w_pad: int, 
+            c_pad: int, 
+            token_per_batch: int,
+            seed_sample_ratio: float = 0.1,
+            sample_ratio: float = 1.0):
+        super(ActiveTrainDataset, self).__init__()
+        self.sample_ratio = sample_ratio
+
+        self.dataset_name = dataset_name
+
+        self.w_pad = w_pad
+        self.c_pad = c_pad
+        self.token_per_batch = token_per_batch
+
+        self.active_batch_num = 0
+        self.reserved_batch_num = 0
+
+        self.seed_sample_ratio = seed_sample_ratio
+
+        self.active_sample_index = []
+        self.reserved_sample_index = []
+
+        self.dataset = None
+        self.dataset_size = 0
+        self.open_file()
+        self.activate()
+
+    def activate(self, to_activate=None):
+        print("***********************")
+        print("Datasize:", self.dataset_size, "Active:", len(self.active_sample_index))
+        if to_activate is None:
+            random.shuffle(self.reserved_samples)
+            num_seed = int(self.dataset_size * self.seed_sample_ratio)
+            self.active_sample_index.extend(self.reserved_samples[:num_seed])
+            self.reserved_sample_index = self.reserved_samples[num_seed:]
+            print("To activate:", num_seed)
+        else:
+            self.active_sample_index.extend(to_activate)
+            to_activate_set = set(to_activate)
+            self.reserved_sample_index = list(filter(lambda idx: idx not in to_activate_set))
+            print("To activate:", len(to_activate))
+        print("Active Now:", len(self.active_sample_index))
+        self.active_dataset, self.active_sample_index,\
+            self.active_index_list, self.active_batch_num, self.active_shuffle_list\
+            = self._get_index_list(self.active_sample_index)
+        self.reserved_dataset, self.reserved_sample_index,\
+            self.reserved_index_list, self.reserved_batch_num, self.reserved_shuffle_list\
+            = self._get_index_list(self.reserved_sample_index)
+
+    def get_tqdm_active(self, device):
+        return tqdm(self.reader_active(device), mininterval=2, total=self.active_batch_num, leave=False, file=sys.stdout).__iter__()
+
+    def get_tqdm_reserved(self, device):
+        return tqdm(self.reader_reserved(device), mininterval=2, total=self.reserved_batch_num, leave=False, file=sys.stdout).__iter__()
+
+    def reader_active(self, device):
+        for cur_idx in range(self.active_batch_num):
+            
+            batch_idx = self.active_shuffle_list[cur_idx]
+            batch = self.active_dataset[self.active_index_list[batch_idx]: self.active_index_list[batch_idx + 1]]
+            sample_index = self.active_sample_index[self.active_index_list[batch_idx]: self.active_index_list[batch_idx + 1]]
+            sample_index = np.array(sample_index)
+           
+            cur_seq_length = len(batch[0][0])
+            # print("========================================================================")
+            # for tup in batch:
+            #     print(cur_seq_length - len(tup[0]), end=" ")
+            word_t = torch.LongTensor([tup[0] + [self.w_pad] * (cur_seq_length - len(tup[0])) for tup in batch]).to(device)
+            char_t = torch.LongTensor([tup[1] + [self.c_pad] * (cur_seq_length - len(tup[0])) for tup in batch]).to(device)
+            chunk_mask = torch.ByteTensor([tup[2] + [0] * (cur_seq_length - len(tup[2])) for tup in batch]).to(device)
+            chunk_label = torch.FloatTensor([label for tup in batch for label in tup[3]]).to(device)
+            type_mask = torch.ByteTensor([mask for tup in batch for mask in tup[4]]).to(device)
+            label_list = [label for tup in batch for label in tup[5]]
+            type_label = torch.FloatTensor(label_list[0:-1]).to(device)
+
+            yield word_t, char_t, chunk_mask, chunk_label, type_mask, type_label, sample_index
+
+        random.shuffle(self.active_shuffle_list)
+    
+    def reader_reserved(self, device):
+        for cur_idx in range(self.reserved_batch_num):
+
+            batch_idx = self.reserved_shuffle_list[cur_idx]
+            batch = self.reserved_dataset[self.reserved_index_list[batch_idx]: self.reserved_index_list[batch_idx + 1]]
+            sample_index = self.reserved_sample_index[self.reserved_index_list[batch_idx]: self.reserved_index_list[batch_idx + 1]]
+            sample_index = np.array(sample_index)
+
+            cur_seq_length = len(batch[0][0])
+            word_t = torch.LongTensor([tup[0] + [self.w_pad] * (cur_seq_length - len(tup[0])) for tup in batch]).to(device)
+            char_t = torch.LongTensor([tup[1] + [self.c_pad] * (cur_seq_length - len(tup[0])) for tup in batch]).to(device)
+            chunk_mask = torch.ByteTensor([tup[2] + [0] * (cur_seq_length - len(tup[2])) for tup in batch]).to(device)
+            chunk_label = torch.FloatTensor([label for tup in batch for label in tup[3]]).to(device)
+            type_mask = torch.ByteTensor([mask for tup in batch for mask in tup[4]]).to(device)
+            label_list = [label for tup in batch for label in tup[5]]
+            type_label = torch.FloatTensor(label_list[0:-1]).to(device)
+
+            yield word_t, char_t, chunk_mask, chunk_label, type_mask, type_label, sample_index
+
+        random.shuffle(self.reserved_shuffle_list)
+
+    def open_file(self):
+        """
+        Open the dataset by name.      
+        """
+        self.dataset = pickle.load(open(self.dataset_name, 'rb'))
+
+        self.dataset = list(filter(lambda t: random.uniform(0, 1) <= self.sample_ratio, self.dataset))
+
+        self.dataset_size = len(self.dataset)
+        print("dataset:", self.dataset_name, "size:", self.dataset_size)
+
+        self.reserved_samples = list(range(self.dataset_size))
+
+    def _get_index_list(self, sample_index):
+        n_samples = len(sample_index)
+        if n_samples == 0:
+            return None, None, None, 0, None
+        sort_dataset = [(self.dataset[idx], idx) for idx in sample_index]
+        sort_dataset.sort(key=lambda t: len(t[0][0]), reverse=True)
+        new_dataset, new_sample_index = list(zip(*sort_dataset))
+        new_sample_index = list(new_sample_index)
+        
+        index_list = list()
+        start_index = 0
+        while start_index < n_samples:
+            index_list.append(start_index)
+            cur_seq_length = len(new_dataset[start_index][0]) - 1
+            cur_batch_size = max(int(self.token_per_batch / cur_seq_length), 1)
+            start_index = start_index + cur_batch_size
+        index_length = len(index_list)
+        index_list.append(n_samples)
+
+        shuffle_list = list(range(index_length-1, -1, -1))
+
+        return new_dataset, new_sample_index, index_list, index_length, shuffle_list
+
 
 class DS_GOLD_MIXED_Dataset(object):
     """
