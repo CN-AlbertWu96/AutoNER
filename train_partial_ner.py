@@ -13,7 +13,7 @@ from model_partial_ner.ner import NER
 import model_partial_ner.utils as utils
 from model_partial_ner.object import softCE
 from model_partial_ner.basic import BasicRNN
-from model_partial_ner.dataset import NERDataset, TrainDataset
+from model_partial_ner.dataset import NERDataset, TrainDataset, ActiveTrainDataset
 
 from torch_scope import wrapper
 
@@ -28,6 +28,8 @@ import functools
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str, default="auto")
     parser.add_argument('--cp_root', default='./checkpoint')
@@ -56,6 +58,7 @@ if __name__ == "__main__":
     parser.add_argument('--interval', type=int, default=30)
     parser.add_argument('--check', type=int, default=1000)
     parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--seed_sample_ratio', type=float, default=1)
     args = parser.parse_args()
 
     pw = wrapper(os.path.join(args.cp_root, args.checkpoint_name), args.checkpoint_name, enable_git_track=args.git_tracking, seed = args.seed)
@@ -70,7 +73,11 @@ if __name__ == "__main__":
     id2label = {v: k for k, v in tl_map.items()}
     assert len(emb_array) == len(w_map)
 
-    train_loader = TrainDataset(args.train_dataset, w_map['<\n>'], c_map['<\n>'], args.batch_token_number, sample_ratio = args.sample_ratio)
+    train_loader = TrainDataset(args.train_dataset, w_map['<\n>'], c_map['<\n>'],
+                                args.batch_token_number, sample_ratio = args.sample_ratio)
+    active_train_loader = ActiveTrainDataset(args.train_dataset, w_map['<\n>'], c_map['<\n>'],
+                                args.batch_token_number, seed_sample_ratio=args.seed_sample_ratio,
+                                sample_ratio = args.sample_ratio)
     test_loader = NERDataset(test_data, w_map['<\n>'], c_map['<\n>'], args.batch_token_number)
     dev_loader = NERDataset(dev_data, w_map['<\n>'], c_map['<\n>'], args.batch_token_number)
 
@@ -116,69 +123,85 @@ if __name__ == "__main__":
     tolerance = args.tolerance
 
     try:
+        track_best_dev_f1, track_best_test_f1 = [], []
 
-        for indexs in range(args.epoch):
+        for n_activation in range(1):
+            n_activation = 9
+            logger.info('************')
+            logger.info('Using: {}% training data'.format((n_activation+1)*10))
+            best_eval, best_f1 = 0, 0
+            for indexs in range(args.epoch):
 
-            logger.info('############')
-            logger.info('Epoch: {}'.format(indexs))
-            pw.nvidia_memory_map(gpu_index = gpu_index)
+                logger.info('############')
+                logger.info('Epoch: {}'.format(indexs))
+                pw.nvidia_memory_map(gpu_index = gpu_index)
 
-            ner_model.train()
+                ner_model.train()
 
-            for word_t, char_t, chunk_mask, chunk_label, type_mask, type_label in train_loader.get_tqdm(device):
-                ner_model.zero_grad()
-                output = ner_model(word_t, char_t, chunk_mask)
+                for word_t, char_t, chunk_mask, chunk_label, type_mask, type_label, _ in active_train_loader.get_tqdm_active(device):
+                    ner_model.zero_grad()
+                    output = ner_model(word_t, char_t, chunk_mask)
 
-                chunk_score = ner_model.chunking(output)
-                chunk_loss = crit_chunk(chunk_score, chunk_label)
+                    chunk_score = ner_model.chunking(output)
+                    chunk_loss = crit_chunk(chunk_score, chunk_label)
 
-                type_score = ner_model.typing(output, type_mask)
-                type_loss = crit_type(type_score, type_label)
+                    type_score = ner_model.typing(output, type_mask)
+                    type_loss = crit_type(type_score, type_label)
 
-                loss = type_loss + chunk_loss
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(ner_model.parameters(), args.clip)
-                optimizer.step()
+                    loss = type_loss + chunk_loss
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(ner_model.parameters(), args.clip)
+                    optimizer.step()
 
-                batch_index += 1 
+                    batch_index += 1 
 
-                if 0 == batch_index % args.interval:
-                    pw.add_loss_vs_batch({'loss_chunk': utils.to_scalar(chunk_loss), 'loss_type': utils.to_scalar(type_loss)}, batch_index, use_logger = False)
-                
+                    if 0 == batch_index % args.interval:
+                        pw.add_loss_vs_batch({'loss_chunk': utils.to_scalar(chunk_loss), 'loss_type': utils.to_scalar(type_loss)}, batch_index, use_logger = False)
+                    
 
-                if 0 == batch_index % args.check:
+                    if 0 == batch_index % args.check:
 
-                    # NER evaluation
-                    pre_dev, rec_dev, f1_dev, type2pre_dev, type2rec_dev, type2f1_dev = utils.evaluate_ner(dev_loader.get_tqdm(device), ner_model, tl_map['None'], id2label)
-                    pw.add_loss_vs_batch({'dev_pre': pre_dev, 'dev_rec': rec_dev}, batch_index, use_logger = False)
-                    pw.add_loss_vs_batch({'dev_f1': f1_dev}, batch_index, use_logger = True)
+                        # NER evaluation
+                        pre_dev, rec_dev, f1_dev, type2pre_dev, type2rec_dev, type2f1_dev = utils.evaluate_ner(dev_loader.get_tqdm(device), ner_model, tl_map['None'], id2label)
+                        pw.add_loss_vs_batch({'dev_pre': pre_dev, 'dev_rec': rec_dev}, batch_index, use_logger = False)
+                        pw.add_loss_vs_batch({'dev_f1': f1_dev}, batch_index, use_logger = True)
 
-                    pw.save_checkpoint(model = ner_model, is_best = f1_dev > best_eval, s_dict = {'config': ner_config, 'w_map': w_map, 'c_map': c_map, 'tl_map': tl_map, 'cl_map': cl_map})
+                        pw.save_checkpoint(model = ner_model, is_best = f1_dev > best_eval, s_dict = {'config': ner_config, 'w_map': w_map, 'c_map': c_map, 'tl_map': tl_map, 'cl_map': cl_map})
 
-                    if f1_dev > best_eval:
-                        best_eval = f1_dev
-                        # best_f1, best_pre, best_rec, best_type2pre, best_type2rec, best_type2f1 = utils.evaluate_ner(test_loader.get_tqdm(device), ner_model, tl_map['None'])
-                        best_pre, best_rec, best_f1, best_type2pre, best_type2rec, best_type2f1 = utils.evaluate_ner(test_loader.get_tqdm(device), ner_model, tl_map['None'], id2label)
-                        pw.add_loss_vs_batch({'test_pre': best_pre, 'test_rec': best_rec}, batch_index, use_logger = False)
-                        pw.add_loss_vs_batch({'test_f1': best_f1}, batch_index, use_logger = True)
-                        patience = 0
-                        for entity_type in best_type2f1:
-                            pw.add_loss_vs_batch({'per_{}_f1'.format(entity_type): best_type2f1[entity_type], 
-                                                    'per_{}_pre'.format(entity_type): best_type2pre[entity_type],
-                                                    'per_{}_rec'.format(entity_type): best_type2rec[entity_type]}, batch_index, use_logger = False)
-                            logger.info('\ttype: %s, f1: %.6f, pre: %.6f, rec: %.6f' % (entity_type, best_type2f1[entity_type], best_type2pre[entity_type], best_type2rec[entity_type]))
-
-                    else:
-                        patience += 1
-                        if patience >= tolerance:
+                        if f1_dev > best_eval:
+                            best_eval = f1_dev
+                            # best_f1, best_pre, best_rec, best_type2pre, best_type2rec, best_type2f1 = utils.evaluate_ner(test_loader.get_tqdm(device), ner_model, tl_map['None'])
+                            best_pre, best_rec, best_f1, best_type2pre, best_type2rec, best_type2f1 = utils.evaluate_ner(test_loader.get_tqdm(device), ner_model, tl_map['None'], id2label)
+                            pw.add_loss_vs_batch({'test_pre': best_pre, 'test_rec': best_rec}, batch_index, use_logger = False)
+                            pw.add_loss_vs_batch({'test_f1': best_f1}, batch_index, use_logger = True)
                             patience = 0
-                            current_lr *= 0.9 ** tolerance
-                            if args.update == 'SGD':
-                                utils.adjust_learning_rate(optimizer, current_lr)
-                                logger.info('current_lr = %.10f' % current_lr)
+                            for entity_type in best_type2f1:
+                                pw.add_loss_vs_batch({'per_{}_f1'.format(entity_type): best_type2f1[entity_type], 
+                                                        'per_{}_pre'.format(entity_type): best_type2pre[entity_type],
+                                                        'per_{}_rec'.format(entity_type): best_type2rec[entity_type]}, batch_index, use_logger = False)
+                                logger.info('\ttype: %s, f1: %.6f, pre: %.6f, rec: %.6f' % (entity_type, best_type2f1[entity_type], best_type2pre[entity_type], best_type2rec[entity_type]))
 
-                    ner_model.train()
+                        else:
+                            patience += 1
+                            if patience >= tolerance:
+                                patience = 0
+                                current_lr *= 0.9 ** tolerance
+                                if args.update == 'SGD':
+                                    utils.adjust_learning_rate(optimizer, current_lr)
+                                    logger.info('current_lr = %.10f' % current_lr)
 
+                        ner_model.train()
+            print ('\nbest dev f1: %.6f, corresponding test f1: %.6f' % (best_eval, best_f1))
+            track_best_dev_f1.append(best_eval)
+            track_best_test_f1.append(best_f1)
+            # active_train_loader.activate()
+            print("---------------------------")
+            print("best dev f1")
+            print(track_best_dev_f1)
+            print("best test f1")
+            print(track_best_test_f1)
+            print("---------------------------")
+        
     except KeyboardInterrupt:
 
         print('Exiting from training early')
@@ -202,6 +225,6 @@ if __name__ == "__main__":
                                         'per_%s_rec'.format(entity_type): best_type2rec[entity_type]}, batch_index, use_logger = False)
                 logger.info('\ttype: %s, f1: %.6f, pre: %.6f, rec: %.6f' % (entity_type, best_type2f1[entity_type], best_type2pre[entity_type], best_type2rec[entity_type]))
 
-    print ('\nbest dev f1: %.6f, corresponding test f1: %.6f' % (best_eval, best_f1))
+    # print ('\nbest dev f1: %.6f, corresponding test f1: %.6f' % (best_eval, best_f1))
 
     pw.close()
