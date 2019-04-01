@@ -146,8 +146,49 @@ def getGoldenChunker(train_path, train_out_file_path):
         train_lines = fin.readlines()
     writeChunkerwithSafety(train_out_file_path, train_lines)
 
+def collectData(lines, set):
+    queue = list()
+    for i in tqdm(range(len(lines))):
+        line = lines[i].strip()
+        data = line.strip().split()
+        if not (line.isspace() or len(data) < 4):
+            type_dic = {'LOC':0, 'ORG':1, 'PER':2}
+            token, sep, type = data[0], data[1], data[2]
+            if token == '<s>':
+                continue
+            if sep == 'I' and queue:
+                phrase, tps = '', ''
+                while queue:
+                    word, tps = queue.pop(0)
+                    phrase += ' ' + word 
+                phrase = phrase.lower().strip()
+                if tps:
+                    for tp in tps.split(','):
+                        set[type_dic[tp]].add(phrase)
+            if type in type_dic:
+                queue.append((token, type))
+
+def countOverlap(gold_path, dic_path):
+    with open(gold_path, 'r') as fin:
+        lines_gold = fin.readlines()
+    with open(dic_path, 'r') as fin:
+        lines_dis = fin.readlines()
+    set_gold = [set(), set(), set()]
+    set_dis = [set(), set(), set()]
+    collectData(lines_gold, set_gold)
+    collectData(lines_dis, set_dis)
+    type_index = {0:'LOC', 1:'ORG', 2:'PER'}
+    for i, (set1, set2) in enumerate(zip(set_gold, set_dis)):
+        intersection = set1.intersection(set2)
+        print('%s: %s-%s-%s'%(type_index[i], len(set1)-len(intersection), len(intersection), len(set2)-len(intersection)))
+
+
 if __name__ == "__main__":
     dataset = "CoNLL03"
+    model = "CoNLL03_newdic"
+    gold_path = '../data/%s/golden.ck'%dataset
+    dic_path =  '../models/%s/annotations.ck'%(model)
+    countOverlap(gold_path, dic_path)
     # raw_path = '../../%s/CoNLL03_all_english_news.txt'%dataset
     # raw_out_file_path = '../data/%s/raw_text.txt'%dataset
     # getRawText(raw_path, raw_out_file_path)
@@ -162,6 +203,6 @@ if __name__ == "__main__":
     # dic_full_path, dic_full_out_path = '../../%s/YOGA_PER_LOC_ORG.tsv'%dataset, '../data/%s/dict_full.txt'%dataset
     # getDictFull(dic_full_path, dic_full_out_path)
 
-    train_path = '../../%s/train.iobes'%dataset
-    train_out_file_path = '../data/%s/golden.ck'%dataset
-    getGoldenChunker(train_path, train_out_file_path)
+    # train_path = '../../%s/train.iobes'%dataset
+    # train_out_file_path = '../data/%s/golden.ck'%dataset
+    # getGoldenChunker(train_path, train_out_file_path)

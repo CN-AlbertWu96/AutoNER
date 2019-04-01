@@ -6,7 +6,6 @@ EMBEDDING_TXT_FILE="embedding/glove.6B.200d.txt"
 MUST_RE_RUN=0
 
 REQUIRE_ANNOTATION=1
-UNIFORM_SAMPLING=0
 
 green=`tput setaf 2`
 reset=`tput sgr0`
