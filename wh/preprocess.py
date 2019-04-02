@@ -56,17 +56,17 @@ def writeChunkerwithSafety(file, lines):
 
 def writeChunker(file, lines):
     with open(file, 'w') as fout:
-        sentence = ["<s> O None S\n"]
+        sentence = ["<s> O None\n"]
         for i in tqdm(range(len(lines))):
             line = lines[i].strip()
-            print('[%s]'%i, bool(line), line)
+            # print('[%s]'%i, bool(line), line)
             if "DOCSTART" in line:
                 continue
             if not line:
                 if len(sentence) > 1:
-                    sentence.append("<eof> I None S\n\n\n")
+                    sentence.append("<eof> I None\n\n\n")
                     fout.write(''.join(sentence))
-                sentence = ["<s> O None S\n"]
+                sentence = ["<s> O None\n"]
             else:
                 data = line.strip().split()
                 word = data[0]
@@ -185,17 +185,17 @@ def countOverlap(gold_path, dic_path):
 
 if __name__ == "__main__":
     dataset = "CoNLL03"
-    model = "CoNLL03_newdic"
-    gold_path = '../data/%s/golden.ck'%dataset
-    dic_path =  '../models/%s/annotations.ck'%(model)
-    countOverlap(gold_path, dic_path)
+    # model = "CoNLL03_newdic"
+    # gold_path = '../data/%s/golden.ck'%dataset
+    # dic_path =  '../models/%s/annotations.ck'%(model)
+    # countOverlap(gold_path, dic_path)
     # raw_path = '../../%s/CoNLL03_all_english_news.txt'%dataset
     # raw_out_file_path = '../data/%s/raw_text.txt'%dataset
     # getRawText(raw_path, raw_out_file_path)
 
-    # dev_path, test_path = '../../%s/testa.iobes'%dataset, '../../%s/testb.iobes'%dataset
-    # dev_out_file_path, test_out_file_path = '../data/%s/truth_dev.ck'%dataset, '../data/%s/truth_test.ck'%dataset
-    # # getTestChunker(dev_path, test_path, dev_out_file_path, test_out_file_path)
+    dev_path, test_path = '../../%s/testa.iobes'%dataset, '../../%s/testb.iobes'%dataset
+    dev_out_file_path, test_out_file_path = '../data/%s/truth_dev.ck'%dataset, '../data/%s/truth_test.ck'%dataset
+    getTestChunker(dev_path, test_path, dev_out_file_path, test_out_file_path)
     
     # dic_core_path, dic_core_out_file = '../../%s/YOGA_PER_LOC_ORG.tsv'%dataset, '../data/%s/dict_core.txt'%dataset
     # getDictCore(dic_core_path, dic_core_out_file)
