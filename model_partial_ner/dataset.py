@@ -333,16 +333,15 @@ class ActiveTrainDataset(object):
         print("***********************")
         print("Datasize:", self.dataset_size, "Active:", len(self.active_sample_index))
         if to_activate is None:
-            random.shuffle(self.reserved_samples)
+            random.shuffle(self.reserved_sample_index)
             num_seed = int(self.dataset_size * self.seed_sample_ratio)
-            self.active_sample_index.extend(self.reserved_samples[:num_seed])
-            self.reserved_sample_index = self.reserved_samples[num_seed:]
-            print("To activate:", num_seed)
+            self.active_sample_index.extend(self.reserved_sample_index[:num_seed])
+            self.reserved_sample_index = self.reserved_sample_index[num_seed:]
+            print("To activate", num_seed)
         else:
             self.active_sample_index.extend(to_activate)
-            to_activate_set = set(to_activate)
-            self.reserved_sample_index = list(filter(lambda idx: idx not in to_activate_set))
-            print("To activate:", len(to_activate))
+            self.reserved_sample_index = list(filter(lambda idx: idx not in to_activate, self.reserved_sample_index))
+            print("To activate: (from hr):", len(to_activate))
         print("Active Now:", len(self.active_sample_index))
         self.active_dataset, self.active_sample_index,\
             self.active_index_list, self.active_batch_num, self.active_shuffle_list\
@@ -350,6 +349,8 @@ class ActiveTrainDataset(object):
         self.reserved_dataset, self.reserved_sample_index,\
             self.reserved_index_list, self.reserved_batch_num, self.reserved_shuffle_list\
             = self._get_index_list(self.reserved_sample_index)
+
+        assert len(self.active_sample_index) + len(self.reserved_sample_index) == len(self.dataset), "Error when activate dataset"
 
     def get_tqdm_active(self, device):
         return tqdm(self.reader_active(device), mininterval=2, total=self.active_batch_num, leave=False, file=sys.stdout).__iter__()
@@ -408,12 +409,13 @@ class ActiveTrainDataset(object):
         """
         self.dataset = pickle.load(open(self.dataset_name, 'rb'))
 
+        # Initialize the golden seed
         self.dataset = list(filter(lambda t: random.uniform(0, 1) <= self.sample_ratio, self.dataset))
 
         self.dataset_size = len(self.dataset)
         print("dataset:", self.dataset_name, "size:", self.dataset_size)
 
-        self.reserved_samples = list(range(self.dataset_size))
+        self.reserved_sample_index = list(range(self.dataset_size))
 
     def _get_index_list(self, sample_index):
         n_samples = len(sample_index)
@@ -424,6 +426,8 @@ class ActiveTrainDataset(object):
         new_dataset, new_sample_index = list(zip(*sort_dataset))
         new_sample_index = list(new_sample_index)
         
+        assert n_samples == len(new_sample_index), "Error when get index list"
+
         index_list = list()
         start_index = 0
         while start_index < n_samples:

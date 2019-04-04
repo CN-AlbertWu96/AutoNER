@@ -15,7 +15,7 @@ def filter_words(w_map, emb_array, ck_filenames):
             if not (line.isspace() or (len(line) > 10 and line[0:10] == '-DOCSTART-')):
                 line = line.rstrip('\n').split()
                 assert len(line) >= 3, 'wrong ck file format'
-                word = line[0]
+                word = line[0].lower()
                 vocab.add(word)
     new_w_map = {}
     new_emb_array = []

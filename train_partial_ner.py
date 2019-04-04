@@ -124,11 +124,11 @@ if __name__ == "__main__":
 
     try:
         track_best_dev_f1, track_best_test_f1 = [], []
-
-        for n_activation in range(1):
-            n_activation = 9
+        track_min_score, track_max_score = [], []
+        seed_sample_ratio = args.seed_sample_ratio
+        for n_activation in range(int(1/seed_sample_ratio)):
             logger.info('************')
-            logger.info('Using: {}% training data'.format((n_activation+1)*10))
+            logger.info('Using: {}% training data'.format((n_activation+1)*100*seed_sample_ratio))
             best_eval, best_f1 = 0, 0
             for indexs in range(args.epoch):
 
@@ -191,15 +191,25 @@ if __name__ == "__main__":
                                     logger.info('current_lr = %.10f' % current_lr)
 
                         ner_model.train()
+
+            num_of_data_require_annotation = int(active_train_loader.dataset_size * active_train_loader.seed_sample_ratio)
+            to_activate, min_score, max_score = utils.select_data(active_train_loader.get_tqdm_reserved(device), ner_model, num_of_data_require_annotation)
+
+            track_min_score.append(min_score)
+            track_max_score.append(max_score)
             print ('\nbest dev f1: %.6f, corresponding test f1: %.6f' % (best_eval, best_f1))
             track_best_dev_f1.append(best_eval)
             track_best_test_f1.append(best_f1)
-            # active_train_loader.activate()
+            active_train_loader.activate(to_activate)
             print("---------------------------")
             print("best dev f1")
             print(track_best_dev_f1)
             print("best test f1")
             print(track_best_test_f1)
+            print("min score")
+            print(track_min_score)
+            print("max score")
+            print(track_max_score)
             print("---------------------------")
         
     except KeyboardInterrupt:

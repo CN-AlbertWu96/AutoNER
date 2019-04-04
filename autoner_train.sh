@@ -1,4 +1,4 @@
-MODEL_NAME="CoNLL03_active"
+MODEL_NAME="CoNLL03_active_hr"
 RAW_TEXT="data/CoNLL03/train.txt"
 DICT_CORE="data/CoNLL03/dict_core_new.txt"
 DICT_FULL="data/CoNLL03/dict_full_new.txt"
@@ -34,7 +34,7 @@ if [ $MUST_RE_RUN == 1 ] || [ ! -e $MODEL_ROOT/embedding.pk ]; then
     python preprocess_partial_ner/save_emb.py --input_embedding $EMBEDDING_TXT_FILE --output_embedding $MODEL_ROOT/embedding.pk
 fi
 
-if [ $MUST_RE_RUN == 1] || [ ! -e $DISTANT_SET ]; then
+if [ $MUST_RE_RUN == 1 ] || [ ! -e $DISTANT_SET ]; then
     echo ${green}=== Generating Distant Supervision ===${reset}
     bin/generate $RAW_TEXT $DICT_CORE $DICT_FULL $DISTANT_SET
 fi
@@ -66,6 +66,7 @@ python train_partial_ner.py \
     --eval_dataset $MODEL_ROOT/encoded_data/test.pk \
     --train_dataset $MODEL_ROOT/encoded_data/train_0.pk \
     --update SGD --lr 0.05 --hid_dim 300 --droprate 0.5 \
-    --sample_ratio 1.0 --word_dim 200 --epoch 50
+    --sample_ratio 1.0 --word_dim 200 --epoch 50 \
+    --seed_sample_ratio 0.1
 
 echo ${green}Done.${reset}

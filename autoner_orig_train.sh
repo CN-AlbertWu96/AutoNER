@@ -1,8 +1,8 @@
-MODEL_NAME="BC5CDR"
-RAW_TEXT="data/BC5CDR/raw_text.txt"
-DICT_CORE="data/BC5CDR/dict_core.txt"
-DICT_FULL="data/BC5CDR/dict_full.txt"
-EMBEDDING_TXT_FILE="embedding/bio_embedding.txt"
+MODEL_NAME="CoNLL03_active"
+RAW_TEXT="data/CoNLL03/train.txt"
+DICT_CORE="data/CoNLL03/dict_core_new.txt"
+DICT_FULL="data/CoNLL03/dict_full_new.txt"
+EMBEDDING_TXT_FILE="embedding/glove.6B.200d.txt"
 MUST_RE_RUN=0
 
 green=`tput setaf 2`

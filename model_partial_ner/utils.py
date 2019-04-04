@@ -179,6 +179,33 @@ def evaluate_ner(iterator, ner_model, none_idx, id2label):
 
     return pre, rec, f1, type2pre, type2rec, type2f1
 
+def select_data(iterator, ner_model, num):
+    ner_model.eval()
+    score_list = list()
+
+    for word_t, char_t, chunk_mask, chunk_label, type_mask, type_label, sample_index in iterator:
+        for word, char, cm, index in zip(word_t, char_t, chunk_mask, sample_index):
+            word = word.unsqueeze(1)
+            char = char.unsqueeze(1)
+            cm = cm.unsqueeze(1)
+            output = ner_model(word, char, cm)
+            chunk_score = ner_model.chunking(output)
+            pred_chunk = (chunk_score < 0.0)
+
+            type_score = ner_model.typing(output, pred_chunk)
+            """
+            Heuristic analysis
+            Now only in order of mean of max score for each sentence
+            """
+            max_score, pred_type = type_score.max(dim = 1)
+            mean_score = max_score.mean()
+            score_list.append((index, mean_score))
+    
+    sorted_score_list = sorted(score_list, key=lambda x: x[1])
+    sorted_index = [x[0] for x in sorted_score_list]
+    min_score_of_all, max_score_of_all = float(sorted_score_list[0][1]), float(sorted_score_list[num-1][1])
+    return sorted_index[:min(num, len(sorted_index))], min_score_of_all, max_score_of_all
+
 def init_embedding(input_embedding):
     """
     Initialize embedding
