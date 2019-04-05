@@ -76,7 +76,8 @@ if __name__ == "__main__":
     train_loader = TrainDataset(args.train_dataset, w_map['<\n>'], c_map['<\n>'],
                                 args.batch_token_number, sample_ratio = args.sample_ratio)
     active_train_loader = ActiveTrainDataset(args.train_dataset, w_map['<\n>'], c_map['<\n>'],
-                                args.batch_token_number, seed_sample_ratio=args.seed_sample_ratio,
+                                args.batch_token_number, random_seed=2019,
+                                seed_sample_ratio=args.seed_sample_ratio,
                                 sample_ratio = args.sample_ratio)
     test_loader = NERDataset(test_data, w_map['<\n>'], c_map['<\n>'], args.batch_token_number)
     dev_loader = NERDataset(dev_data, w_map['<\n>'], c_map['<\n>'], args.batch_token_number)

@@ -305,9 +305,11 @@ class ActiveTrainDataset(object):
             w_pad: int, 
             c_pad: int, 
             token_per_batch: int,
+            random_seed: int,
             seed_sample_ratio: float = 0.1,
             sample_ratio: float = 1.0):
         super(ActiveTrainDataset, self).__init__()
+        random.seed(random_seed)
         self.sample_ratio = sample_ratio
 
         self.dataset_name = dataset_name
@@ -340,7 +342,8 @@ class ActiveTrainDataset(object):
             print("To activate", num_seed)
         else:
             self.active_sample_index.extend(to_activate)
-            self.reserved_sample_index = list(filter(lambda idx: idx not in to_activate, self.reserved_sample_index))
+            to_activate_set = set(to_activate)
+            self.reserved_sample_index = list(filter(lambda idx: idx not in to_activate_set, self.reserved_sample_index))
             print("To activate: (from hr):", len(to_activate))
         print("Active Now:", len(self.active_sample_index))
         self.active_dataset, self.active_sample_index,\
