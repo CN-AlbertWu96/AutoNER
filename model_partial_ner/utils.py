@@ -203,7 +203,7 @@ def select_data(iterator, ner_model, num):
     
     sorted_score_list = sorted(score_list, key=lambda x: x[1])
     sorted_index = [x[0] for x in sorted_score_list]
-    min_score_of_all, max_score_of_all = float(sorted_score_list[0][1]), float(sorted_score_list[num-1][1])
+    min_score_of_all, max_score_of_all = float(sorted_score_list[0][1]), float(sorted_score_list[min(num, len(sorted_index))-1][1])
     return sorted_index[:min(num, len(sorted_index))], min_score_of_all, max_score_of_all
 
 def init_embedding(input_embedding):

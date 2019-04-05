@@ -420,7 +420,7 @@ class ActiveTrainDataset(object):
     def _get_index_list(self, sample_index):
         n_samples = len(sample_index)
         if n_samples == 0:
-            return None, None, None, 0, None
+            return [], [], [], 0, []
         sort_dataset = [(self.dataset[idx], idx) for idx in sample_index]
         sort_dataset.sort(key=lambda t: len(t[0][0]), reverse=True)
         new_dataset, new_sample_index = list(zip(*sort_dataset))
