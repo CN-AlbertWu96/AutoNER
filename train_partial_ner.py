@@ -194,7 +194,7 @@ if __name__ == "__main__":
                         ner_model.train()
 
             num_of_data_require_annotation = int(active_train_loader.dataset_size * active_train_loader.seed_sample_ratio)
-            to_activate, min_score, max_score = utils.select_data(active_train_loader.get_tqdm_reserved(device), ner_model, num_of_data_require_annotation)
+            to_activate, min_score, max_score = utils.select_data(active_train_loader.get_tqdm_reserved(device), ner_model, num_of_data_require_annotation, tl_map['None'], id2label)
 
             track_min_score.append(min_score)
             track_max_score.append(max_score)
@@ -202,6 +202,7 @@ if __name__ == "__main__":
             track_best_dev_f1.append(best_eval)
             track_best_test_f1.append(best_f1)
             active_train_loader.activate(to_activate)
+            # active_train_loader.activate()
             print("---------------------------")
             print("best dev f1")
             print(track_best_dev_f1)
@@ -212,6 +213,9 @@ if __name__ == "__main__":
             print("max score")
             print(track_max_score)
             print("---------------------------")
+
+        # plot_path = args.cp_root + args.checkpoint_name + '/f1.png'
+        # utils.plotF1(track_best_dev_f1, track_best_test_f1, output_file=plot_path) 
         
     except KeyboardInterrupt:
 

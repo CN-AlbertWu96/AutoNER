@@ -59,13 +59,17 @@ class NER(nn.Module):
             self.to_type_proj = nn.Linear(self.rnn_outdim, y_dim)
             self.chunk_weight = nn.Linear(y_dim, 1)
             self.type_weight = nn.Linear(y_dim, y_num)
+            self.softmax = nn.Softmax(1)
             self.chunk_layer = nn.Sequential(self.to_chunk, self.drop, self.to_chunk_proj, self.drop, self.chunk_weight)
             self.type_layer = nn.Sequential(self.to_type, self.drop, self.to_type_proj, self.drop, self.type_weight)
+            self.type_layer_with_sm = nn.Sequential(self.to_type, self.drop, self.to_type_proj, self.drop, self.type_weight, self.softmax)
         else:
             self.chunk_weight = nn.Linear(self.rnn_outdim, 1)
             self.type_weight = nn.Linear(self.rnn_outdim, y_num)
+            self.softmax = nn.Softmax(1)
             self.chunk_layer = nn.Sequential(self.to_chunk, self.drop, self.chunk_weight)
             self.type_layer = nn.Sequential(self.to_type, self.drop, self.type_weight)
+            self.type_layer_with_sm = nn.Sequential(self.to_type, self.drop, self.type_weight, self.softmax)
 
     def to_params(self):
         """
@@ -151,7 +155,7 @@ class NER(nn.Module):
 
         return out
 
-    def typing(self, z_in, mask):
+    def typing(self, z_in, mask, require_softmax=False):
         """
         Typing
 
@@ -169,10 +173,12 @@ class NER(nn.Module):
 
         z_in = self.drop(z_in)
 
-        out = self.type_layer(z_in)
-
+        if require_softmax:
+            out = self.type_layer_with_sm(z_in)
+        else:
+            out = self.type_layer(z_in)
         return out
-        
+
     def to_span(self, chunk_label, type_label, none_idx):
         """
         Convert word-level labels to entity spans.
