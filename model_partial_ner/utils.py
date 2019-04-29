@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.init
 
+# import matplotlib.pyplot as plt
+
 def adjust_learning_rate(optimizer, lr):
     """
     Shrink learning rate for pytorch
@@ -179,7 +181,7 @@ def evaluate_ner(iterator, ner_model, none_idx, id2label):
 
     return pre, rec, f1, type2pre, type2rec, type2f1
 
-def select_data(iterator, ner_model, num):
+def select_data(iterator, ner_model, num, none_idx, id2label):
     ner_model.eval()
     score_list = list()
 
@@ -192,14 +194,22 @@ def select_data(iterator, ner_model, num):
             chunk_score = ner_model.chunking(output)
             pred_chunk = (chunk_score < 0.0)
 
-            type_score = ner_model.typing(output, pred_chunk)
+            type_score = ner_model.typing(output, pred_chunk, require_softmax=True)
             """
             Heuristic analysis
-            Now only in order of mean of max score for each sentence
             """
-            max_score, pred_type = type_score.max(dim = 1)
-            mean_score = max_score.mean()
-            score_list.append((index, mean_score))
+            # ==============In order of mean of max score for each sentence============
+            # max_score, pred_type = type_score.max(dim = 1)
+            # mean_score = max_score.mean()
+            # score_list.append((index, mean_score))
+            # ==============In order of information entropy for each sentence============
+            ie_score = 0.0
+            if len(type_score) > 0:
+                for type_s in type_score:
+                    for type_p in type_s:
+                        ie_score += -type_p * np.math.log(type_p)
+                ie_score /= len(type_score)
+            score_list.append((index, ie_score))
     
     sorted_score_list = sorted(score_list, key=lambda x: x[1])
     sorted_index = [x[0] for x in sorted_score_list]
@@ -242,3 +252,11 @@ def init_lstm(input_lstm):
             weight = eval('input_lstm.bias_hh_l'+str(ind))
             weight.data.zero_()
             weight.data[input_lstm.hidden_size: 2 * input_lstm.hidden_size] = 1
+
+# def plotF1(*data, output_file='output.jpg'):
+#     fig = plt.figure(figsize=(30, 10))
+#     label = ['dev', 'test']
+#     for i, d in enumerate(data):
+#         plt.plot(range(len(d)), d, label=label[i])
+#     plt.legend()
+#     plt.savefig(output_file)
