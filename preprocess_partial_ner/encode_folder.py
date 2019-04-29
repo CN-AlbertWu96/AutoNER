@@ -7,6 +7,7 @@ from tqdm import tqdm
 import sys
 import itertools
 import functools
+import simplejson as json
 
 # narrow down the word mapping, require the word to be in the vocabulary or signal word
 def filter_words(w_map, emb_array, ck_filenames):
@@ -178,6 +179,9 @@ def encode_folder(input_folder, output_folder, w_map, c_map, cl_map, tl_map, c_t
             if key not in c_map:
                 c_map[key] = len(c_map)
     dataset = list()
+    dataset_with_index = list()
+
+    index = 0
 
     for f_l, l_c, l_c_m, l_m, l_t in zip(features, labels_chunk, labels_chunk_mask, labels_point, labels_typing):
         tmp_w = [w_st, w_con]
@@ -217,8 +221,19 @@ def encode_folder(input_folder, output_folder, w_map, c_map, cl_map, tl_map, c_t
         # character embedding, character index, character space
         # word chunker bound, ?, word entity type
         dataset.append([tmp_w, tmp_c, tmp_mc, tmp_lc, tmp_mt, tmp_lt])
+        dataset_with_index.append([tmp_w, index])
+
+        index += 1
 
     dataset.sort(key=lambda t: len(t[0]), reverse=True)
+    dataset_with_index.sort(key=lambda t: len(t[0]), reverse=True)
+
+    index_dict = {}
+    for i in range(len(dataset_with_index)):
+        index_dict[i] = dataset_with_index[i][1]
+
+    with open(output_folder+'index.json', 'w') as fout:
+        json.dump(index_dict, fout)
 
     with open(output_folder+'train_'+ str(range_ind) + '.pk', 'wb') as f:
         pickle.dump(dataset, f)
@@ -242,7 +257,6 @@ def encode_dataset(input_file, w_map, c_map, cl_map, tl_map):
     c_st, c_unk, c_con, c_pad = c_map['<s>'], c_map['<unk>'], c_map['< >'], c_map['<\n>']
 
     dataset = list()
-
     for f_l, l_c, l_m, l_t in zip(features, labels_chunk, labels_point, labels_typing):
         tmp_w = [w_st, w_con]
         tmp_c = [c_st, c_con]
