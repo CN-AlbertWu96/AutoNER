@@ -11,6 +11,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.init
+import torch.nn.functional as F
 
 # import matplotlib.pyplot as plt
 
@@ -194,7 +195,7 @@ def select_data(iterator, ner_model, num, none_idx, id2label):
             chunk_score = ner_model.chunking(output)
             pred_chunk = (chunk_score < 0.0)
 
-            type_score = ner_model.typing(output, pred_chunk, require_softmax=True)
+            type_score = F.softmax(ner_model.typing(output, pred_chunk))
             """
             Heuristic analysis
             """
